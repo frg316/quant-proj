@@ -1,0 +1,173 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+	<head>
+		<link rel="stylesheet" href="http://maxcdn.bootstrapcdn.com/bootstrap/3.3.5/css/bootstrap.min.css">
+		<script type ="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.11.3/jquery.min.js"></script>
+		<script type="text/javascript" src="http://dygraphs.com/dygraph-combined.js"></script>
+
+		<script type ="text/javascript" src="http://maxcdn.bootstrapcdn.com/bootstrap/3.3.5/js/bootstrap.min.js"></script>
+	</head>
+	<body>
+		<h1>SCOOT</h1>
+		<div class = "container">
+			Enter ticker here: <input type = "text" id = "ticker" placeholder = "AAPL">
+			<p><br>
+			Start Date:        <input type = "text" id = "stdate" placeholder = "YYYY-MM-DD">
+			<p><br>
+			End Date:          <input type = "text" id = "endate" placeholder = "YYYY-MM-DD">
+			<p><br>
+
+			<select id = "period">
+				<option value = "daily">Daily</option>
+				<option value = "weekly">Weekly</option>
+				<option value = "monthly">Monthly</option>
+				<option value = "quarterly">Quarterly</option>
+				<option value = "annual">Annual</option>
+			</select>
+
+			<p>
+			<button id = "submit" class = "btn btn-primary">Submit</button>
+			<button id = "reg" class = "btn btn-primary">Plot Regression Line</button>
+		</div>
+
+		<div id = "yeet">
+		</div>
+
+		Value of r squared:
+		<div id = "r2">
+		</div>
+
+		<script>
+		$(document).ready(function(){
+			  var formatted_data = [];
+			  var g = null;
+
+			  $("#submit").click(function(){
+				  var ticker = document.getElementById("ticker").value;
+				  var stDate = new Date(document.getElementById("stdate").value);
+				  var enDate = new Date(document.getElementById("endate").value);
+				  var collapse = document.getElementById("period");
+				  var selected = collapse.options[collapse.selectedIndex].text;
+
+				  var api = "https://www.quandl.com/api/v1/datasets/WIKI/" + ticker + ".json?trim_start="+stDate+"&trim_end="+enDate+"&sort_order=asc&column=4&collapse="+selected+"&auth_token=cEShBx3tpQsuzU7tgsyi";
+
+				  //console.log(api);
+				  $.ajax({
+				  	type: "GET",
+				  	url: api,
+				  	success: function(data){
+				  		iterateJson(data);
+				  	},
+				  	error: function(jqXHR, textStatus, errorThrown){
+				  		alert(jqXHR.status);
+				  	},
+				  	dataType: "json"
+				   });
+			});
+
+			  $("#reg").click(function(){
+			  	mergeArray(formatted_data);
+			  })
+
+			  function iterateJson(data){	  	
+				  $.each(data.data, function(index, data){
+				  		var d = new Date(data[0]);
+				  		data[0] = d;
+				  		formatted_data.push(data);
+				  });
+
+				for (var i = 0; i < formatted_data.length; i++){
+			  		formatted_data[i][2] = null;
+			  	}
+
+				  console.log(formatted_data);
+				  buildGraph(formatted_data);
+				  //mergeArray(formatted_data);
+			}
+
+			  function buildGraph(data){
+			  	if(!g){
+				  g = new Dygraph(document.getElementById("yeet"),
+			      data,
+			      {
+			        ylabel: 'Price in USD',
+			        xlabel: 'Years',
+			        title:  document.getElementById("ticker").value + ' Stock Prices',
+			        showRoller: false,
+			        rollPeriod: 14
+			      });
+			    g.resize(1160, 360);
+			}
+				else{
+					g.updateOptions({file: data});
+				}
+			}
+
+			  function mergeArray(data){
+			  	var yval = [];
+			  	var xval = [];
+
+			  	for(var i = 0; i < data.length; i++){
+			  		yval.push(data[i][1]);
+			  		var myDate=getTimestamp(data[i][0]);
+			  		xval.push(myDate);
+			  	}
+
+			  	var lr = linearRegression(yval, xval);
+
+			  	for (var i = 0; i < data.length; i++){
+			  		var x = [];
+				  	var initDate = new Date(xval[i]);
+				  	x.push(initDate, (lr.slope * xval[i]) + lr.intercept);
+
+			  		if(data[i][0].getTime() == x[0].getTime()){
+			  			data[i][2] = x[1];
+			  			hold = 1;
+			  		}
+			  	}
+
+			  	var theDiv = document.getElementById("r2");
+				var content = document.createTextNode(lr.r2);
+				theDiv.appendChild(content);
+
+			  	buildGraph(data);
+			  }
+
+			  function getTimestamp(myDate){
+			  	var someDate = new Date(myDate).getTime();
+				return someDate;
+			  }
+
+			  function linearRegression(y,x){
+				var lr = {};
+				var n = y.length;
+				var sum_x = 0;
+				var sum_y = 0;
+				var sum_xy = 0;
+				var sum_xx = 0;
+				var sum_yy = 0;
+				
+				for (var i = 0; i < y.length; i++) {
+		 			
+		 			sum_x += x[i];
+		 			sum_y += y[i];
+		 			sum_xy += (x[i]*y[i]);
+		 			sum_xx += (x[i]*x[i]);
+		 			sum_yy += (y[i]*y[i]);
+		 		} 
+		 		
+		 		lr['slope'] = (n * sum_xy - sum_x * sum_y) / (n*sum_xx - sum_x * sum_x);
+		 		lr['intercept'] = (sum_y - lr.slope * sum_x)/n;
+		 		lr['r2'] = Math.pow((n*sum_xy - sum_x*sum_y)/Math.sqrt((n*sum_xx-sum_x*sum_x)*(n*sum_yy-sum_y*sum_y)),2);
+		 		
+		  		return lr;
+		  		//var lr = linearRregression(known_y, known_x);
+				// now you have:
+				// lr.slope
+				// lr.intercept
+				// lr.r2
+		    }
+		})
+		</script>
+	</body>
+</html>

@@ -1,0 +1,400 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+  <head>
+    <script src="//cdnjs.cloudflare.com/ajax/libs/dygraph/1.1.1/dygraph-combined.js"></script>
+    <script type="text/javascript" src="http://dygraphs.com/dygraph-combined.js"></script>
+    <link rel="stylesheet" href="http://maxcdn.bootstrapcdn.com/bootstrap/3.3.5/css/bootstrap.min.css">
+    <link rel="stylesheet" href="main.css">
+    <script src="main.js"></script>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.11.3/jquery.min.js"></script>
+    <script src="http://maxcdn.bootstrapcdn.com/bootstrap/3.3.5/js/bootstrap.min.js"></script>
+    <script type="text/javascript" src="http://code.jquery.com/jquery-latest.js"></script>
+    <link rel="stylesheet" href="https://ajax.googleapis.com/ajax/libs/jqueryui/1.11.2/themes/smoothness/jquery-ui.css" />
+    <script type="text/javascript" src="http://ajax.googleapis.com/ajax/libs/jqueryui/1.11.2/jquery-ui.js"></script>
+    <!--<script type="text/javascript" src="http://ajax.googleapis.com/ajax/libs/jqueryui/1.8.9/jquery-ui.js"></script>-->
+  </head>
+  <body>
+    <h1>STOCK INFO</h1>
+    <div class = "container">
+      Enter ticker here: <input type = "text" id = "ticker" placeholder = "AAPL">
+      <p><br>
+      Start Date:        <input type = "text" id = "stdate" placeholder = "YYYY-MM-DD">
+      <p><br>
+      End Date:          <input type = "text" id = "endate" placeholder = "YYYY-MM-DD">
+      <p><br>
+
+      <select id = "period">
+        <option value = "daily">Daily</option>
+        <option value = "weekly">Weekly</option>
+        <option value = "monthly">Monthly</option>
+        <option value = "quarterly">Quarterly</option>
+        <option value = "annual">Annual</option>
+      </select>
+
+      <p>
+      <button id = "submit" class = "btn btn-primary" onclick="this.disabled='disabled';">Submit</button>
+      <button id = "reg" class = "btn btn-primary" onclick="this.disabled='disabled';">Plot Regression Line</button>
+      <button id = "avg" class = "btn btn-primary">Moving Average</button>
+    </div>
+
+    <div id = "yeet" style="background-color:#ecf0f1; max-height: 900px; width: 100%;">
+          </div>
+
+          Value of r squared:
+          <div id = "r2">
+          </div>
+    <script>
+    $(document).ready(function() {
+        var formatted_data = [];
+        var shortMA = [];
+        var longMA = [];
+        var ticker;
+        var stDate;
+        var enDate;
+        var collapse;
+        var selected;
+        var g = null;
+        var stDate = null;
+        var enDate = null;
+        var oldStart;
+        var availableCompanies = [
+          "AMZN",
+          "AAPL",
+          "T",
+          "BA",
+          "BAC",
+          "BKS",
+          "C",
+          "CCF",
+          "CL",
+          "CSCO",
+          "CVS",
+          "CVX",
+          "DGX",
+          "DO",
+          "DTEGY",
+          "XOM",
+          "FB",
+          "GE",
+          "GALT",
+          "GS",
+          "GOOG",
+          "HBC",
+          "HMC",
+          "HPQ",
+          "IBM",
+          "INTC",
+          "JCP",
+          "JNJ",
+          "JPM",
+          "KSS",
+          "KORS",
+          "LNKD",
+          "MRK",
+          "MSFT",
+          "ORCL",
+          "PPL",
+          "QCOM",
+          "TM",
+          "TWTR",
+          "VZ",
+          "WMT",
+          "WFC",
+          "YHOO"
+          ];
+          $("#ticker").autocomplete({
+            source: availableCompanies
+          });
+        $("#submit").click(function() {
+          ticker = document.getElementById("ticker").value;
+          stDate = new Date(document.getElementById("stdate").value);
+          var endDateVar = document.getElementById("endate").value;
+          enDate = new Date(document.getElementById("endate").value);
+          collapse = document.getElementById("period");
+          selected = collapse.options[collapse.selectedIndex].text;
+          var api = "https://www.quandl.com/api/v1/datasets/WIKI/" + ticker + ".json?trim_start=" + stDate + "&trim_end=" + enDate + "&sort_order=asc&column=4&collapse=" + selected + "&auth_token=sbjcL7gXCPfsMtTKCa_w";
+          $.ajax({
+            type: "GET",
+            url: api,
+            success: function(data) {
+              iterateJson(data);
+            },
+            error: function(jqXHR, textStatus, errorThrown) {
+              alert(jqXHR.status + ": Stock info not found");
+            },
+            dataType: "json"
+           });
+          console.log(map);
+          var api2 = "http://api.nytimes.com/svc/search/v2/articlesearch.json?&q=" + map[ticker] + "&fq=pub_date:(" + endDateVar+ ")&api-key=acb9927935999a3fcdeb5899abcc9585:13:72477507";
+          $.ajax({
+            type: "GET",
+            url: api2,
+            success: function(data) {
+              if(availableCompanies.indexOf(ticker) > -1) {
+                getArticles(api2);
+                console.log(api2);
+              }
+            },
+            error: function(jqXHR, textStatus, errorThrown) {
+            },
+            dataType: "json"
+          });
+        });
+
+        $("#reg").click(function() {
+          mergeArray(formatted_data);
+        })
+
+        function iterateJson(data) {
+          $.each(data.data, function(index, data){
+            var d = new Date(data[0]);
+            data[0] = d;
+            formatted_data.push(data);
+          });
+          for(var i = 0; i < formatted_data.length; i++) {
+            formatted_data[i][2] = null;
+            formatted_data[i][3] = null;
+            formatted_data[i][4] = null;
+          }
+          //console.log(formatted_data);
+          buildGraph(formatted_data);
+        }
+
+        $("#avg").click(function(){
+          getMovingAvgData();
+        })
+
+        function movingAvg15(data) {
+          //console.log(data);
+          var arrCounts = [];
+          $.each(data.data, function(index, data){
+            var d = new Date(data[0]);
+            data[0] = d;
+            shortMA.push(data);
+          });
+          //console.log(shortMA);
+          for(var i = 0; i < shortMA.length; i++){
+              formatted_data.unshift(shortMA[i]);
+          }
+            //console.log(formatted_data);
+            var sma15 = simple_moving_averager(15);
+            for(var i = 0; i < formatted_data.length; i++){
+              var n = formatted_data[i][1];
+              formatted_data[i][3] = sma15(n);
+            }
+            formatted_data = formatted_data.slice(15, formatted_data.length);
+            getMovingAvgData50();
+            //buildGraph(formatted_data);
+        }
+        function simple_moving_averager(period) {
+            var nums = [];
+            return function(num) {
+                nums.push(num);
+                if (nums.length > period)
+                    nums.splice(0,1);  // remove the first element of the array
+                var sum = 0;
+                for (var i in nums)
+                    sum += nums[i];
+                var n = period;
+                if (nums.length < period)
+                    n = nums.length;
+                return(sum/n);
+            }
+        }
+
+        function movingAvg50(data){
+          var arrCounts = [];
+          $.each(data.data, function(index, data){
+            var d = new Date(data[0]);
+            data[0] = d;
+            shortMA.push(data);
+          });
+          //console.log(shortMA);
+          for(var i = 0; i < shortMA.length; i++){
+              formatted_data.unshift(shortMA[i]);
+          }
+            //console.log(formatted_data);
+            var sma15 = simple_moving_averager(50);
+            for(var i = 0; i < formatted_data.length; i++){
+              var n = formatted_data[i][1];
+              formatted_data[i][4] = sma15(n);
+            }
+            formatted_data = formatted_data.slice(50, formatted_data.length);
+            buildGraph(formatted_data);
+        }
+
+        function getMovingAvgData(){
+          //enDate.setDate(enDate.getDate()-30);
+          oldStart = new Date(stDate);
+          stDate.setDate(stDate.getDate()-20);
+          var api = "https://www.quandl.com/api/v1/datasets/WIKI/" + ticker + ".json?trim_start=" + stDate + "&trim_end=" + oldStart + "&sort_order=asc&column=4&collapse=" + selected + "&auth_token=sbjcL7gXCPfsMtTKCa_w";
+          console.log(api);
+          $.ajax({
+            type: "GET",
+            url: api,
+            success: function(data) {
+              movingAvg15(data);
+            },
+            error: function(jqXHR, textStatus, errorThrown) {
+              alert(jqXHR.status + ": Stock info not found");
+            },
+            dataType: "json"
+           });
+        }
+
+        function getMovingAvgData50(){
+          //enDate.setDate(enDate.getDate()-30);
+          oldStart = new Date(stDate);
+          stDate.setDate(stDate.getDate()-60);
+          var api = "https://www.quandl.com/api/v1/datasets/WIKI/" + ticker + ".json?trim_start=" + stDate + "&trim_end=" + oldStart + "&sort_order=asc&column=4&collapse=" + selected + "&auth_token=sbjcL7gXCPfsMtTKCa_w";
+          console.log(api);
+          $.ajax({
+            type: "GET",
+            url: api,
+            success: function(data) {
+              movingAvg50(data);
+            },
+            error: function(jqXHR, textStatus, errorThrown) {
+              alert(jqXHR.status + ": Stock info not found");
+            },
+            dataType: "json"
+           });
+        }
+
+        function getArticles(data) {
+          var articleJson = $.getJSON(data);
+          articleJson.complete(function() {
+            $("#table tr").not(function() {
+              if($(this).has("th").length) {
+                return true;
+              }
+            }).remove();
+            console.log("Articles completely received.");
+            var articles = articleJson.responseJSON.response.docs;
+            console.log(articles);
+
+            for(var i = 0; i < articles.length; i++) {
+              article_para = articles[i].lead_paragraph;
+              if(!article_para) {
+                article_para = "Click for more information.";
+              };
+              $('#table > tbody:last').append("<tr onclick='window.open(&quot;" + articles[i].web_url + "&quot;)'><td><b>" + articles[i].headline.main + "</b><br>" + article_para + "</td></tr>");
+            }
+            if(articles.length == 0) {
+              $("#wat").html("No relevant articles were found in the past two weeks for " + map["" + document.getElementById("ticker").value + ""] + ".");
+            }
+            else {
+              $("#date").html(formatPubDate(articles[0].pub_date) + ".");
+              $("#wat").html("");
+            }
+          });
+        }
+
+        function formatPubDate(date) {
+          date = date.split("T");
+          return date[0];
+        }
+
+        function buildGraph(data) {
+          g = new Dygraph(document.getElementById("yeet"),
+            data,
+            {
+              ylabel: 'Price in USD',
+              xlabel: 'Years',
+              title: map[ticker] + ' Stock Prices',
+              showRoller: false,
+              rollPeriod: 14
+            });
+          g.resize(1160, 360);
+        }
+
+    function mergeArray(data) {
+      var yval = [];
+      var xval = [];
+
+      for(var i = 0; i < data.length; i++) {
+        yval.push(data[i][1]);
+        var myDate = getTimestamp(data[i][0]);
+        xval.push(myDate);
+      }
+      if(availableCompanies.indexOf(document.getElementById("ticker").value) > -1) {
+        var lr = linearRegression(yval, xval);
+      }
+
+      for(var i = 0; i < data.length; i++) {
+        var x = [];
+        var initDate = new Date(xval[i]);
+        x.push(initDate, (lr.slope * xval[i]) + lr.intercept);
+        if(data[i][0].getTime() == x[0].getTime()) {
+          data[i][2] = x[1];
+          hold = 1;
+        }
+       }
+       var theDiv = document.getElementById("r2");
+       var content = document.createTextNode(lr.r2);
+       theDiv.appendChild(content);
+
+       if(availableCompanies.indexOf(document.getElementById("ticker").value) > -1) {
+       buildGraph(data);
+   }
+    }
+
+    function getTimestamp(myDate) {
+      var someDate = new Date(myDate).getTime();
+      return someDate;
+    }
+
+    window.onload = function getCurrentDate() {
+      var currentDate = new Date();
+      var month = currentDate.getMonth() + 1;
+      if(month[0] != "1") {
+        month = "0" + (currentDate.getMonth() + 1);
+      }
+      var day = currentDate.getDate();
+      if(day[0] != "1" || day[0] != "2" || day[0] != "3") {
+        day = "0" + currentDate.getDate();
+      }
+      var year = currentDate.getFullYear();
+      var fullDate = month + "/" + day + "/" + year;
+
+      document.getElementById('date').innerHTML = fullDate;
+    };
+
+        function linearRegression(y,x) {
+        var lr = {};
+        var n = y.length;
+        var sum_x = 0;
+        var sum_y = 0;
+        var sum_xy = 0;
+        var sum_xx = 0;
+        var sum_yy = 0;
+        
+        for(var i = 0; i < y.length; i++) {
+          sum_x += x[i];
+          sum_y += y[i];
+          sum_xy += (x[i] * y[i]);
+          sum_xx += (x[i] * x[i]);
+          sum_yy += (y[i] * y[i]);
+        }
+        
+        lr['slope'] = (n * sum_xy - sum_x * sum_y) / (n * sum_xx - sum_x * sum_x);
+        lr['intercept'] = (sum_y - lr.slope * sum_x) / n;
+        lr['r2'] = Math.pow((n * sum_xy - sum_x * sum_y) / Math.sqrt((n * sum_xx - sum_x * sum_x) * (n * sum_yy - sum_y *sum_y)), 2);
+        
+          return lr;
+          //var lr = linearRregression(known_y, known_x);
+        // now you have:
+        // lr.slope
+        // lr.intercept
+        // lr.r2
+        }
+     });
+    </script>
+    <table id="table" class="table table-bordered table-hover">
+    <tr>
+      <th><center><h5>Headlines from <span id="date"></span></h5></center></th>
+    </tr>
+  </table>
+  <div class="text-center" id="wat"></div>
+  </body>
+</html>
